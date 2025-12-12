@@ -3,98 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>주소 검색</title>
-
+    <title>주소 검색 - Dr.Lift</title>
     <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
-
     <style>
-        html, body {
-            margin: 0; padding: 0;
-            width: 100%; height: 100%;
-        }
-        #layer {
-            display: block;
-            width: 100%;
-            height: 100%;
-            -webkit-overflow-scrolling: touch;
-        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+        #layer { width: 100%; height: 100%; position: absolute; }
     </style>
 </head>
-
 <body>
     <div id="layer"></div>
 
     <script>
-        // ------------------------------
-        // 1) URL 파라미터에서 검색어 가져오기
-        // ------------------------------
-        var urlParams = new URLSearchParams(window.location.search);
-        var rawQuery = urlParams.get('q');
-        var query = rawQuery ? decodeURIComponent(rawQuery) : '';
+        // 1. URL에서 검색어(q) 파싱
+        const urlParams = new URLSearchParams(window.location.search);
+        const query = urlParams.get('q'); // 예: "광명로 204"
 
-        // ------------------------------
-        // 2) Daum Postcode 실행
-        // ------------------------------
-        var element_layer = document.getElementById('layer');
+        const element_layer = document.getElementById('layer');
 
-        daum.postcode.load(function () {
+        new daum.Postcode({
+            oncomplete: function(data) {
+                // 검색 결과가 선택되었을 때의 로직
+                // (FlutterFlow나 앱으로 데이터를 보내는 로직이 여기에 들어갑니다)
+                if(window.PostcodeHandler) {
+                     window.PostcodeHandler.postMessage(JSON.stringify(data));
+                }
+            },
+            width: '100%',
+            height: '100%'
+        }).embed(element_layer);
 
-            var postcode = new daum.Postcode({
-                width: '100%',
-                height: '100%',
-                maxSuggestItems: 5,
+        // ✅ 핵심 로직: embed 된 후 강제로 검색어 넣고 엔터 치기
+        if (query) {
+            autoSearch(query);
+        }
 
-                oncomplete: function (data) {
-                    var fullAddress = data.roadAddress;
-                    var sido = data.sido;
+        function autoSearch(keyword) {
+            // 카카오 우편번호 서비스는 iframe으로 생성되므로, 내부 DOM에 접근해야 함
+            // 로딩 딜레이를 고려하여 0.1초마다 요소를 찾을 때까지 반복 체크
+            let checkInterval = setInterval(function() {
+                
+                // Daum Postcode가 생성한 iframe 찾기
+                let iframe = document.querySelector('iframe');
+                
+                if (iframe && iframe.contentDocument) {
+                    let innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    
+                    // 내부의 검색 입력창 찾기 (보통 id가 'region_name' 이거나 class가 'txt_search' 등임)
+                    // 안전하게 input 태그 중 첫 번째 텍스트 박스를 타겟팅
+                    let input = innerDoc.querySelector('input[type="text"]');
+                    let searchBtn = innerDoc.querySelector('.btn_search'); // 검색 버튼 클래스
 
-                    var sidoMap = {
-                        "서울": "서울특별시", "경기": "경기도", "부산": "부산광역시",
-                        "대구": "대구광역시", "인천": "인천광역시", "광주": "광주광역시",
-                        "대전": "대전광역시", "울산": "울산광역시", "세종": "세종특별자치시",
-                        "강원": "강원도", "충북": "충청북도", "충남": "충청남도",
-                        "전북": "전라북도", "전남": "전라남도", "경북": "경상북도",
-                        "경남": "경상남도", "제주": "제주특별자치도"
-                    };
+                    if (input) {
+                        clearInterval(checkInterval); // 요소를 찾았으니 반복 중단
 
-                    if (sidoMap[sido]) {
-                        fullAddress = fullAddress.replace(sido, sidoMap[sido]);
-                    }
+                        // 1. 값 강제 주입
+                        input.value = keyword;
 
-                    if (window.parent) {
-                        window.parent.postMessage(fullAddress, "*");
+                        // 2. React/Vue 등 내부 프레임워크가 인식하도록 이벤트 발생
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                        // 3. 엔터키 이벤트 발송 (가장 확실한 방법)
+                        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+                        input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+
+                        // 4. 혹시 모르니 검색 버튼도 클릭 트리거
+                        if (searchBtn) {
+                            searchBtn.click();
+                        }
+                        
+                        console.log("자동 검색 실행 완료: " + keyword);
                     }
                 }
-            });
-
-            postcode.embed(element_layer);
-
-            // ------------------------------
-            // 3) embed 완료 후 검색창에 강제 입력 + 검색 실행
-            // ------------------------------
-            if (query) {
-                setTimeout(function () {
-                    // iframe 내부 접근
-                    var iframe = element_layer.querySelector("iframe");
-                    if (!iframe) return;
-
-                    var doc = iframe.contentDocument || iframe.contentWindow.document;
-
-                    // 검색 input 가져오기
-                    var input = doc.querySelector("input[type=text]");
-                    if (!input) return;
-
-                    // 값 넣기
-                    input.value = query;
-
-                    // keyup 이벤트 강제로 발생시켜 검색 실행
-                    var event = new Event('keyup', { bubbles: true });
-                    input.dispatchEvent(event);
-
-                }, 600); // 600ms: embed 로딩 대기
-            }
-
-        });
+            }, 100); // 0.1초 간격으로 체크
+        }
     </script>
 </body>
 </html>

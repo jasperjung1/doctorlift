@@ -4,33 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>주소 검색</title>
+
     <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+
     <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
-        #layer { display:block; width:100%; height:100%; -webkit-overflow-scrolling:touch; }
+        html, body {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+        }
+        #layer {
+            display: block;
+            width: 100%;
+            height: 100%;
+            -webkit-overflow-scrolling: touch;
+        }
     </style>
 </head>
+
 <body>
     <div id="layer"></div>
+
     <script>
-        // 1. URL 파라미터 가져오기 및 디코딩
+        // ------------------------------
+        // 1) URL 파라미터에서 검색어 가져오기
+        // ------------------------------
         var urlParams = new URLSearchParams(window.location.search);
         var rawQuery = urlParams.get('q');
         var query = rawQuery ? decodeURIComponent(rawQuery) : '';
 
-        // [디버깅] 이 알림창이 떠야 새 코드입니다! 확인 후 주석 처리하세요.
-        if (query) {
-             alert("검색어 확인: " + query); 
-        }
-
+        // ------------------------------
+        // 2) Daum Postcode 실행
+        // ------------------------------
         var element_layer = document.getElementById('layer');
 
-        // 2. Daum API 로드 대기 후 실행
-        daum.postcode.load(function() {
-            new daum.Postcode({
-                oncomplete: function(data) {
+        daum.postcode.load(function () {
+
+            var postcode = new daum.Postcode({
+                width: '100%',
+                height: '100%',
+                maxSuggestItems: 5,
+
+                oncomplete: function (data) {
                     var fullAddress = data.roadAddress;
                     var sido = data.sido;
+
                     var sidoMap = {
                         "서울": "서울특별시", "경기": "경기도", "부산": "부산광역시",
                         "대구": "대구광역시", "인천": "인천광역시", "광주": "광주광역시",
@@ -44,18 +61,39 @@
                         fullAddress = fullAddress.replace(sido, sidoMap[sido]);
                     }
 
-                    // Flutter 앱으로 결과 전송
-                    if (window.DaumPostcode && window.DaumPostcode.postMessage) {
-                        window.DaumPostcode.postMessage(fullAddress);
-                    } else if (window.parent) {
+                    if (window.parent) {
                         window.parent.postMessage(fullAddress, "*");
                     }
-                },
-                width: '100%',
-                height: '100%',
-                maxSuggestItems: 5,
-                q: query // 검색어 주입
-            }).embed(element_layer);
+                }
+            });
+
+            postcode.embed(element_layer);
+
+            // ------------------------------
+            // 3) embed 완료 후 검색창에 강제 입력 + 검색 실행
+            // ------------------------------
+            if (query) {
+                setTimeout(function () {
+                    // iframe 내부 접근
+                    var iframe = element_layer.querySelector("iframe");
+                    if (!iframe) return;
+
+                    var doc = iframe.contentDocument || iframe.contentWindow.document;
+
+                    // 검색 input 가져오기
+                    var input = doc.querySelector("input[type=text]");
+                    if (!input) return;
+
+                    // 값 넣기
+                    input.value = query;
+
+                    // keyup 이벤트 강제로 발생시켜 검색 실행
+                    var event = new Event('keyup', { bubbles: true });
+                    input.dispatchEvent(event);
+
+                }, 600); // 600ms: embed 로딩 대기
+            }
+
         });
     </script>
 </body>
